@@ -1,13 +1,32 @@
-const { response } = require('express')
 const express = require('express')
-const datos = require('./data')
 const morgan = require('morgan')
 const cors = require('cors')
-require('dotenv').config({path: __dirname = '/.env'})
-
+require('dotenv').config()
+const Person = require('./models/person')
 const app = express()
 const PORT = process.env.PORT || 3001
-let data = datos.data
+
+const mongoose = require("mongoose");
+const { response } = require('express')
+
+const url = process.env.URI
+
+mongoose.connect(url)
+
+const personSchema = new mongoose.Schema({
+	name: String,
+	number: String
+})
+
+
+personSchema.set('toJSON', {
+    transform: (document, returnedObject) => {
+        returnedObject.id = returnedObject._id.toString()
+        delete returnedObject._id
+        delete returnedObject.__v
+    }
+})
+
 morgan.token('data', (req,res) => JSON.stringify(req.body))
 
 app.use(cors())
@@ -15,7 +34,9 @@ app.use(express.json())
 app.use(morgan(':method :url :status :res[content-length] - :response-time ms :data'))
 app.use(express.static('build'))
 app.get('/api/persons',(req,res) => {
-    res.json(data)
+    Person.find({}).then(person => {
+        res.json(person)
+    })
 })
 app.get('/info',(req, res) => {
     res.send(
@@ -25,40 +46,46 @@ app.get('/info',(req, res) => {
 })
 
 app.get('/api/persons/:id',(req, res)=>{
-    const id = Number(req.params.id)
-    const person = data.find(person => person.id === id)
-    person ? res.json(person) : res.status(404).end()
+    Person.findById(req.params.id)
+        .then(note => {
+            if(note){
+                res.json(note)
+            } else {
+                res.status(404).end()
+            }
+        }).catch( error => {
+            console.log(error)
+            res.status(500).end()
+        })
 })
 
 app.delete('/api/persons/:id', (req,res)=>{
-    const id = Number(req.params.id)
-    data = data.filter(person => person.id !== id)
-    
-    res.status(204).end()   
+    console.log(req.params.id)
+    Person.findByIdAndRemove(req.params.id)
+        .then(result => {
+        res.status(204).end()
+    })
+    .catch(error => console.log(error))
 })
 
 app.post('/api/persons',(req, res) => {
-    const id = Math.floor(Math.random() * 10000000)
-    const person = req.body 
+    
+    const person = new Person({
+        name: req.body.name,
+        number: req.body.number
+    })
     if(!person)
         return res.status(400).json({
             error: "content missing"
-        })
-    if(!person.hasOwnProperty('name') || !person.hasOwnProperty('number')){
-        return res.status(400).json(
-            {error:"content has no name or number entry"})
-    }
-    data.map(({name})=>{
-        if(name === person.name){
-            return res.status(400).json({
-                error:"name is already in use"}).end()
-        }
-        return data
     })
-    person.id = id
-    console.log(person)
-    data = [...data, person]
-    res.json(person)
+    person.save().then(savedPerson => res.json(savedPerson))
+})
+app.put('/api/persons/:id',(req, res) => {
+    Person.findByIdAndUpdate(req.params.id, req.body, {number: req.body.number})
+    .then(updatedPerson => {
+        res.json(updatedPerson)
+    })
+    .catch(err => console.log(err))
 })
 
 const unknownEndpoint = (request, response) => {
